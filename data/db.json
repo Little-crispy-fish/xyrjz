@@ -1,0 +1,459 @@
+{
+  "users": [
+    {
+      "id": "aec54715-686f-4232-a344-abab8c88d174",
+      "account": "superadmin",
+      "role": "admin",
+      "name": "超级管理员",
+      "major": "default",
+      "avatar": "",
+      "passwordHash": "61b5c32f1245b05860f99dd91d853237:7203745fd40a3c1596fa8997053fc4ad163e2f904d42e3802de8cfba8126ca88",
+      "mustChangePassword": false,
+      "createdAt": "2026-05-17T15:50:41.646Z"
+    },
+    {
+      "id": "b7ab4984-cbf3-48a5-a84c-de8fe6232a29",
+      "account": "20260001",
+      "role": "student",
+      "name": "学生演示账号",
+      "major": "info_security",
+      "avatar": "",
+      "passwordHash": "b980e1d3515facb6bac0e2f9af1adc8e:9cd097ab6b0c584d907c0dc5676a34e03a38585af606f106d0ef6e1153960b9c",
+      "mustChangePassword": true,
+      "createdAt": "2026-05-17T15:50:41.646Z"
+    },
+    {
+      "id": "4e96bffa-e564-4cfe-aa87-669771934286",
+      "account": "T1001",
+      "role": "teacher",
+      "name": "教师演示账号",
+      "major": "computer_application",
+      "avatar": "",
+      "passwordHash": "6b476a29af98c0e1e3cd19de73a139c0:3df918e3dd215925627b33a703a686889420f80968d30c9c7e5a7b328ba93f9d",
+      "mustChangePassword": false,
+      "createdAt": "2026-05-17T15:50:41.646Z"
+    },
+    {
+      "id": "853ec749-b6f3-47fc-a3de-3f610054f42a",
+      "account": "2531105017",
+      "role": "admin",
+      "name": "何瑞",
+      "major": "info_security",
+      "avatar": "",
+      "passwordHash": "dae4d519715f5d55b584a033770bbca0:a2fd81938a287c58219556d71af37c17a1c68218cce09ef971090af8ca1f9423",
+      "mustChangePassword": false,
+      "createdBy": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-20T02:24:33.661Z"
+    }
+  ],
+  "files": [
+    {
+      "id": "0ae5c4c8-d8d5-4c71-ac4c-e25e5088ad97",
+      "zone": "software",
+      "category": "Windows软件",
+      "title": "轩禹ctf",
+      "description": "ctf工具",
+      "originalName": "轩禹CTF_RSA工具3.6.1.exe",
+      "storedName": "1779196012868-a4d9a2b7-轩禹CTF_RSA工具3.6.1.exe",
+      "diskPath": "D:\\\\软件\\\\Windows软件\\\\1779196012868-a4d9a2b7-轩禹CTF_RSA工具3.6.1.exe",
+      "size": 18966685,
+      "uploaderId": "aec54715-686f-4232-a344-abab8c88d174",
+      "uploaderName": "超级管理员",
+      "createdAt": "2026-05-19T13:06:52.879Z",
+      "status": "published",
+      "downloadCount": 0,
+      "isRecommend": false,
+      "isHot": false,
+      "version": "1.0",
+      "systemRequire": "Windows",
+      "tutorial": ""
+    },
+    {
+      "id": "adb3bda7-e1d3-4828-8bb8-fff48a20ed36",
+      "zone": "mirror",
+      "category": "系统镜像",
+      "title": "Windows10专业版",
+      "description": "",
+      "originalName": "zh-cn_windows_10_consumer_editions_version_22h2_updated_march_2023_x64_dvd_1e27e10b.iso",
+      "storedName": "1779201480278-4dd3edf4-zh-cn_windows_10_consumer_editions_version_22h2_updated_march_2023_x64_dvd_1e27e10b.iso",
+      "diskPath": "D:\\\\镜像\\\\系统镜像\\\\1779201480278-4dd3edf4-zh-cn_windows_10_consumer_editions_version_22h2_updated_march_2023_x64_dvd_1e27e10b.iso",
+      "size": 6106974208,
+      "uploaderId": "aec54715-686f-4232-a344-abab8c88d174",
+      "uploaderName": "超级管理员",
+      "createdAt": "2026-05-19T15:07:46.913Z",
+      "status": "published",
+      "downloadCount": 0,
+      "isRecommend": false,
+      "isHot": false,
+      "version": "1.0",
+      "systemRequire": "Windows / Linux",
+      "tutorial": ""
+    }
+  ],
+  "confessions": [],
+  "sessions": {
+    "3bb55cdfa6e167b88ccf9e9d84a05609c84613c87ca2b406": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T01:59:19.523Z"
+    },
+    "fbd4826bc12ba12bac0b30303dd065fe3fe0ca91f47c7f7f": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T02:00:00.770Z"
+    },
+    "9066e9e5b31c9d7926a99c15ee5995bd7db5df3e5d37080f": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T02:41:52.579Z"
+    },
+    "6350ef9bf85564aa224e775ce96c3da9bc1b06116e36f791": {
+      "userId": "4e96bffa-e564-4cfe-aa87-669771934286",
+      "createdAt": "2026-05-21T02:42:23.416Z"
+    },
+    "abea7e2e658ca3847ba100aa8f9ee8dfeb98c2122bf09d74": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T02:50:38.621Z"
+    },
+    "6becbf3d31c2a2bb3af705343791c97bbe3c4d57624d8e6b": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T02:55:05.361Z"
+    },
+    "c12cbf7ec8a88a13fd8d1741953436a6d34f69c48ca20c33": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T07:00:17.577Z"
+    },
+    "72f65297f5ce7e9e7aca19323b9ef5f290110bba9cd2a7dc": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T07:03:24.090Z"
+    },
+    "16a147eed75cbf57e8f47bd6de20bd95339d29cd417c4d18": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-21T07:16:00.920Z"
+    }
+  },
+  "uploads": [],
+  "adminModules": {
+    "asset.0": [],
+    "dashboard.0": [],
+    "dashboard.1": [],
+    "dashboard.2": [],
+    "dashboard.3": [],
+    "org.0": [],
+    "org.1": [],
+    "org.2": [],
+    "org.3": [],
+    "org.4": [],
+    "org.5": [],
+    "org.6": [],
+    "auth.0": [],
+    "auth.1": [],
+    "auth.2": [],
+    "auth.3": [],
+    "auth.4": [],
+    "auth.5": [],
+    "student.0": [],
+    "student.1": [],
+    "student.2": [],
+    "student.3": [],
+    "student.4": [],
+    "student.5": [],
+    "teacher.0": [],
+    "teacher.1": [],
+    "teacher.2": [],
+    "teacher.3": [],
+    "teacher.4": [],
+    "education.0": [],
+    "education.1": [],
+    "education.2": [],
+    "education.3": [],
+    "education.4": [],
+    "education.5": [],
+    "attendance.0": [],
+    "attendance.1": [],
+    "attendance.2": [],
+    "attendance.3": [],
+    "attendance.4": [],
+    "activity.0": [],
+    "activity.1": [],
+    "activity.2": [],
+    "activity.3": [],
+    "activity.4": [],
+    "dorm.0": [],
+    "dorm.1": [],
+    "dorm.2": [],
+    "dorm.3": [],
+    "dorm.4": [],
+    "asset.1": [],
+    "asset.2": [],
+    "asset.3": [],
+    "asset.4": [],
+    "notice.0": [],
+    "notice.1": [],
+    "notice.2": [],
+    "notice.3": [],
+    "notice.4": [],
+    "resource.0": [],
+    "resource.1": [],
+    "resource.2": [],
+    "resource.3": [],
+    "resource.4": [],
+    "stats.0": [],
+    "stats.1": [],
+    "stats.2": [],
+    "stats.3": [],
+    "stats.4": [],
+    "stats.5": [],
+    "security.0": [],
+    "security.1": [],
+    "security.2": [],
+    "security.3": [],
+    "security.4": [],
+    "security.5": [],
+    "settings.0": [],
+    "settings.1": [],
+    "settings.2": [],
+    "settings.3": [],
+    "settings.4": [],
+    "settings.5": [],
+    "settings.6": [],
+    "settings.7": []
+  },
+  "adminModuleLogs": [
+    {
+      "id": "f82d374b-defe-4151-a901-dfcf7cb2defe",
+      "action": "update_settings",
+      "moduleKey": "settings.0",
+      "moduleGroup": "系统设置",
+      "moduleName": "基础信息设置",
+      "recordId": "systemSettings",
+      "recordTitle": "系统设置",
+      "operatorId": "aec54715-686f-4232-a344-abab8c88d174",
+      "operatorAccount": "superadmin",
+      "operatorName": "超级管理员",
+      "createdAt": "2026-05-21T07:16:00.926Z"
+    }
+  ],
+  "systemSettings": {
+    "schoolName": "智慧校园软件站",
+    "loginTitle": "校园软件站",
+    "loginSubtitle": "学生用学号登录，教师用工号登录。",
+    "theme": "default",
+    "emailHost": "",
+    "emailUser": "",
+    "smsProvider": "",
+    "smsSign": "",
+    "maxFileGb": 20,
+    "maxChunkMb": 8,
+    "maintenanceMode": false,
+    "maintenanceMessage": "系统维护中，请稍后再试。",
+    "dictionaries": [
+      {
+        "key": "user_status",
+        "label": "用户状态",
+        "values": [
+          "正常",
+          "停用",
+          "待审核"
+        ]
+      },
+      {
+        "key": "record_status",
+        "label": "记录状态",
+        "values": [
+          "正常",
+          "待审核",
+          "进行中",
+          "已完成",
+          "停用"
+        ]
+      }
+    ],
+    "updatedAt": "2026-05-21T07:23:57.132Z"
+  },
+  "categories": [
+    {
+      "id": "f65a1f35-7864-4a64-9839-25c83a8386ab",
+      "name": "办公软件",
+      "icon": "",
+      "sort": 1,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "34647570-5e3f-4e13-a180-710e3892d252",
+      "name": "编程开发",
+      "icon": "",
+      "sort": 2,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "b86cea35-1948-4825-9772-1b50f5168d00",
+      "name": "网络安全",
+      "icon": "",
+      "sort": 3,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "1f6ebfc5-ada3-40e0-b002-0e1efc36c655",
+      "name": "数据库工具",
+      "icon": "",
+      "sort": 4,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "de65b147-a49b-4fa4-8c5b-edb0c33d444e",
+      "name": "虚拟机工具",
+      "icon": "",
+      "sort": 5,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "8f79d388-329a-47bf-8f9f-fbc4d10b27eb",
+      "name": "图像设计",
+      "icon": "",
+      "sort": 6,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "281b74b8-19bd-4e7f-8ace-331a7736e1fb",
+      "name": "视频剪辑",
+      "icon": "",
+      "sort": 7,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "1724f28a-9668-4731-8849-3e049b456c8f",
+      "name": "教学软件",
+      "icon": "",
+      "sort": 8,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "603fda82-41e7-454f-8290-a42c1dc74e1a",
+      "name": "驱动工具",
+      "icon": "",
+      "sort": 9,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "f4075786-0419-4965-a227-ade359f8c539",
+      "name": "系统工具",
+      "icon": "",
+      "sort": 10,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "db615f3d-a75b-4bda-bd74-c55727994348",
+      "name": "浏览器",
+      "icon": "",
+      "sort": 11,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "8144e0c4-de16-475b-ba74-b304e3bd17c6",
+      "name": "压缩工具",
+      "icon": "",
+      "sort": 12,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "388e9a6d-d96c-4b5f-b72d-b2b6bbce213d",
+      "name": "远程控制",
+      "icon": "",
+      "sort": 13,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "b1df7954-5e26-4c33-95f2-7bd937023eaa",
+      "name": "考试软件",
+      "icon": "",
+      "sort": 14,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "4096e956-5d7d-4f4a-ab94-407a2b1d6b4e",
+      "name": "校园专用软件",
+      "icon": "",
+      "sort": 15,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    },
+    {
+      "id": "b39cd9e4-9cfb-46df-b23f-2bccd581ef77",
+      "name": "系统镜像",
+      "icon": "",
+      "sort": 16,
+      "enabled": true,
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    }
+  ],
+  "notices": [
+    {
+      "id": "0a42bc5c-2b17-41d7-9eb1-6f034eb83b56",
+      "title": "校园软件资源平台上线",
+      "content": "平台提供软件下载、镜像下载、安装教程、问题反馈和后台统计能力。",
+      "pinned": true,
+      "scope": "全体师生",
+      "createdAt": "2026-05-22T08:13:32.246Z"
+    }
+  ],
+  "feedback": [],
+  "downloadLogs": [],
+  "guestDownloads": {},
+  "operationLogs": [
+    {
+      "id": "d404aa71-fb67-4c1f-a088-841e14732928",
+      "action": "调整账号权限",
+      "target": "2531105017",
+      "detail": "student/info_security/normal -> admin/info_security/normal",
+      "operatorId": "aec54715-686f-4232-a344-abab8c88d174",
+      "operatorName": "超级管理员",
+      "operatorAccount": "superadmin",
+      "createdAt": "2026-05-22T08:13:32.248Z"
+    },
+    {
+      "id": "b2b31d94-0284-4976-9dbd-e97fb09c62d1",
+      "action": "调整账号权限",
+      "target": "T1001",
+      "detail": "teacher/computer_application/must -> teacher/computer_application/must",
+      "operatorId": "aec54715-686f-4232-a344-abab8c88d174",
+      "operatorName": "超级管理员",
+      "operatorAccount": "superadmin",
+      "createdAt": "2026-05-22T08:13:33.549Z"
+    },
+    {
+      "id": "34915b98-1c06-4e51-b063-0613d0bdd665",
+      "action": "调整账号权限",
+      "target": "2531105017",
+      "detail": "admin/info_security/normal -> admin/info_security/normal",
+      "operatorId": "aec54715-686f-4232-a344-abab8c88d174",
+      "operatorName": "超级管理员",
+      "operatorAccount": "superadmin",
+      "createdAt": "2026-05-22T08:15:15.662Z"
+    }
+  ],
+  "settings": {
+    "siteName": "智慧校园软件资源管理平台",
+    "logoText": "校园软件站",
+    "allowGuestBrowse": false,
+    "requireLoginDownload": true,
+    "maxFileGb": 20,
+    "maxChunkMb": 8,
+    "storageSoftware": "C:\\Users\\Administrator\\Desktop\\校园软件站\\data\\software",
+    "storageMirror": "C:\\Users\\Administrator\\Desktop\\校园软件站\\data\\mirror",
+    "maintenanceMode": false,
+    "maintenanceMessage": "系统维护中，请稍后再试。",
+    "updatedAt": "2026-05-22T08:13:32.246Z"
+  }
+}

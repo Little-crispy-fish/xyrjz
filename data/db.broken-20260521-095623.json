@@ -1,0 +1,57 @@
+{
+  "users": [
+    {
+      "id": "aec54715-686f-4232-a344-abab8c88d174",
+      "account": "superadmin",
+      "role": "admin",
+      "name": "超级管理员",
+      "major": "default",
+      "avatar": "",
+      "passwordHash": "4e43118a599948a6846aa77ee15e30ed:5ab0d94b283125eeac07a6df99c9a48f8b281b9e199aa064cf188892313052ba",
+      "mustChangePassword": false,
+      "createdAt": "2026-05-17T15:50:41.646Z"
+    },
+    {
+      "id": "b7ab4984-cbf3-48a5-a84c-de8fe6232a29",
+      "account": "20260001",
+      "role": "student",
+      "name": "学生演示账号",
+      "major": "software",
+      "avatar": "",
+      "passwordHash": "b980e1d3515facb6bac0e2f9af1adc8e:9cd097ab6b0c584d907c0dc5676a34e03a38585af606f106d0ef6e1153960b9c",
+      "mustChangePassword": true,
+      "createdAt": "2026-05-17T15:50:41.646Z"
+    },
+    {
+      "id": "4e96bffa-e564-4cfe-aa87-669771934286",
+      "account": "T1001",
+      "role": "teacher",
+      "name": "教师演示账号",
+      "major": "computer",
+      "avatar": "",
+      "passwordHash": "65c9a293c8fbad50394b4c602a7a2385:b87e4828627e8a0b1544dfdff9632213662bc23ad9b45530566b24e8ca29425d",
+      "mustChangePassword": true,
+      "createdAt": "2026-05-17T15:50:41.646Z"
+    }
+  ],
+  "files": [],
+  "confessions": [],
+  "sessions": {
+    "b366ed633eb27ed2183eb1c65e547dee0b6589752f143a2d": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-17T15:51:18.374Z"
+    },
+    "ff225db07b1169b2a4d3faedc149e7b428fd00a323353757": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-17T15:55:31.994Z"
+    },
+    "2d7739d3782cd9e53b91bb291fb01c3f872bbf78be79456a": {
+      "userId": "b7ab4984-cbf3-48a5-a84c-de8fe6232a29",
+      "createdAt": "2026-05-17T15:55:45.219Z"
+    },
+    "caa7771ee79627bdb8110f40f87e4038756fef702dd32ef8": {
+      "userId": "aec54715-686f-4232-a344-abab8c88d174",
+      "createdAt": "2026-05-17T15:57:10.343Z"
+    }
+  }
+}
