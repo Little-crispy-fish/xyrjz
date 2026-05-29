@@ -15,9 +15,11 @@ const ROOT = __dirname;
 const DATA_DIR = process.env.DATA_DIR || ("D:" + path.sep + "\u6821\u56ed\u8f6f\u4ef6\u7ad9\u6570\u636e");
 const DB_FILE = process.env.DB_FILE || path.join(DATA_DIR, "db.json");
 const PUBLIC_DIR = path.join(ROOT, "public");
+const CLIENT_APP_FILE = path.join(PUBLIC_DIR, "app.js");
 const SOFTWARE_ROOT = process.env.SOFTWARE_ROOT || ("D:" + path.sep + "\u8f6f\u4ef6");
 const MIRROR_ROOT = process.env.MIRROR_ROOT || ("D:" + path.sep + "\u955c\u50cf");
 const AVATAR_ROOT = path.join(DATA_DIR, "avatars");
+const LOGO_ROOT = path.join(DATA_DIR, "logos");
 const DEFAULT_PASSWORD = "123456";
 const SUPERADMIN_PASSWORD_FILE = path.join(DATA_DIR, "superadmin-initial-password.txt");
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_MB || 900) * 1024 * 1024;
@@ -28,6 +30,9 @@ const MAX_CONCURRENT_DOWNLOADS = Number(process.env.MAX_CONCURRENT_DOWNLOADS || 
 const DOWNLOAD_STREAM_HIGH_WATER_MARK = Number(process.env.DOWNLOAD_BUFFER_MB || 1) * 1024 * 1024;
 const GUEST_DOWNLOAD_LIMIT = Number(process.env.GUEST_DOWNLOAD_LIMIT || 5);
 const loginAttempts = new Map();
+const requestBuckets = new Map();
+const blockedClients = new Map();
+const suspiciousStrikes = new Map();
 let lastCpuSample = null;
 let activeDownloads = 0;
 const runtimeSessions = {};
@@ -71,6 +76,7 @@ const defaultCategories = [
 const defaultSettings = {
   siteName: "智慧校园软件资源管理平台",
   logoText: "校园软件站",
+  logoUrl: "",
   allowGuestBrowse: false,
   requireLoginDownload: true,
   maxFileGb: Number(process.env.MAX_FILE_GB || 20),
@@ -80,6 +86,14 @@ const defaultSettings = {
   maintenanceMode: false,
   maintenanceMessage: "系统维护中，请稍后再试。"
 };
+
+const defaultClasses = [
+  "2025级信息安全技术应用班",
+  "2025级计算机应用技术班",
+  "2025级人工智能技术应用班",
+  "2025级智能互联网技术应用班",
+  "2025级云计算应用技术班"
+];
 
 const adminModuleCatalog = {};
 
@@ -116,6 +130,7 @@ function seedDb() {
   ensureDir(SOFTWARE_ROOT);
   ensureDir(MIRROR_ROOT);
   ensureDir(AVATAR_ROOT);
+  ensureDir(LOGO_ROOT);
   if (fs.existsSync(DB_FILE)) return;
   const now = new Date().toISOString();
   const superAdminPassword = process.env.SUPERADMIN_PASSWORD || crypto.randomBytes(12).toString("base64url");
@@ -130,6 +145,7 @@ function seedDb() {
         role: "admin",
         name: "超级管理员",
         major: "default",
+        className: "",
         avatar: "",
         passwordHash: hashPassword(superAdminPassword),
         mustChangePassword: false,
@@ -141,6 +157,7 @@ function seedDb() {
         role: "student",
         name: "学生演示账号",
         major: "info_security",
+        className: "2025级信息安全技术应用班",
         avatar: "",
         passwordHash: hashPassword(DEFAULT_PASSWORD),
         mustChangePassword: true,
@@ -152,12 +169,14 @@ function seedDb() {
         role: "teacher",
         name: "教师演示账号",
         major: "computer_application",
+        className: "2025级计算机应用技术班",
         avatar: "",
         passwordHash: hashPassword(DEFAULT_PASSWORD),
         mustChangePassword: true,
         createdAt: now
       }
     ],
+    classes: defaultClasses.map((name) => ({ id: crypto.randomUUID(), name, createdAt: now })),
     files: [],
     confessions: [],
     sessions: {},
@@ -185,6 +204,10 @@ function ensureDbShape(db) {
   let changed = false;
   if (!Array.isArray(db.users)) {
     db.users = [];
+    changed = true;
+  }
+  if (!Array.isArray(db.classes)) {
+    db.classes = defaultClasses.map((name) => ({ id: crypto.randomUUID(), name, createdAt: new Date().toISOString() }));
     changed = true;
   }
   if (!Array.isArray(db.files)) {
@@ -318,6 +341,12 @@ function ensureDbShape(db) {
       changed = true;
     }
   }
+  for (const user of db.users) {
+    if (user.className === undefined) {
+      user.className = "";
+      changed = true;
+    }
+  }
   return changed;
 }
 
@@ -338,7 +367,7 @@ function securityHeaders() {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Content-Security-Policy": [
       "default-src 'self'",
-      "script-src 'self'",
+      "script-src 'self' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
       "connect-src 'self'",
@@ -431,6 +460,11 @@ function readBody(req, limit = MAX_JSON_BYTES) {
 async function readJson(req) {
   const body = await readBody(req, MAX_JSON_BYTES);
   if (!body.length) return {};
+  if (containsAttackPayload(body.toString("utf8"))) {
+    const error = new Error("请求被安全策略拦截");
+    error.statusCode = 403;
+    throw error;
+  }
   return JSON.parse(body.toString("utf8"));
 }
 
@@ -442,6 +476,7 @@ function publicUser(user) {
       role: "guest",
       name: "游客",
       major: "default",
+      className: "",
       avatar: "",
       mustChangePassword: false,
       theme: majorThemes.default
@@ -454,6 +489,7 @@ function publicUser(user) {
     role: user.role,
     name: user.name,
     major,
+    className: String(user.className || ""),
     avatar: user.avatar,
     mustChangePassword: user.mustChangePassword,
     theme: majorThemes[major] || majorThemes.default
@@ -464,6 +500,12 @@ function normalizeMajor(major) {
   if (majorThemes[major]) return major;
   if (majorAliases[major]) return majorAliases[major];
   return "default";
+}
+
+function normalizeClassName(db, value) {
+  const name = String(value || "").trim().slice(0, 80);
+  if (!name) return "";
+  return (db.classes || []).some((item) => item.name === name) ? name : "";
 }
 
 function classifyFile(filename) {
@@ -479,6 +521,45 @@ function classifyFile(filename) {
 
 function safeName(name) {
   return String(name || "file").replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 120);
+}
+
+function isInsideDir(filePath, dirPath) {
+  const file = path.resolve(filePath);
+  const dir = path.resolve(dirPath);
+  const relative = path.relative(dir, file);
+  return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function storageRootForFile(file) {
+  if (file?.zone === "mirror") return MIRROR_ROOT;
+  if (file?.zone === "software") return SOFTWARE_ROOT;
+  const diskPath = String(file?.diskPath || "");
+  if (diskPath && isInsideDir(diskPath, MIRROR_ROOT)) return MIRROR_ROOT;
+  return SOFTWARE_ROOT;
+}
+
+function deleteStoredFile(file) {
+  const rawPath = String(file?.diskPath || "").trim();
+  if (!rawPath) return { deleted: false, reason: "empty_path" };
+  const diskPath = path.resolve(rawPath);
+  const root = storageRootForFile(file);
+  if (!isInsideDir(diskPath, root)) {
+    throw new Error("文件路径不在允许的存储目录内，已停止删除");
+  }
+  if (!fs.existsSync(diskPath)) return { deleted: false, reason: "missing" };
+  const stat = fs.statSync(diskPath);
+  if (!stat.isFile()) throw new Error("目标不是文件，已停止删除");
+  fs.unlinkSync(diskPath);
+
+  const parent = path.dirname(diskPath);
+  if (parent !== path.resolve(root) && isInsideDir(parent, root)) {
+    try {
+      if (fs.existsSync(parent) && fs.readdirSync(parent).length === 0) fs.rmdirSync(parent);
+    } catch {
+      // Empty directory cleanup is best effort; the file itself has already been removed.
+    }
+  }
+  return { deleted: true };
 }
 
 function getUploadStore(db) {
@@ -637,6 +718,7 @@ function adminStatus(db) {
     adminModuleLogs: db.adminModuleLogs.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30),
     settings: db.settings,
     categories: db.categories,
+    classes: db.classes || [],
     notices: db.notices,
     feedback: db.feedback.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30),
     downloadLogs: db.downloadLogs.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50),
@@ -674,6 +756,83 @@ function hashFile(filePath, algorithm = "md5") {
 
 function clientIp(req) {
   return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+}
+
+function containsAttackPayload(value) {
+  let input = String(value || "");
+  try {
+    input = decodeURIComponent(input);
+  } catch {
+    return true;
+  }
+  input = input.toLowerCase();
+  return [
+    /\bsqlmap\b/,
+    /\bunion\b[\s\S]{0,40}\bselect\b/,
+    /\bselect\b[\s\S]{0,80}\bfrom\b/,
+    /\binformation_schema\b/,
+    /\bsleep\s*\(/,
+    /\bbenchmark\s*\(/,
+    /\bload_file\s*\(/,
+    /\binto\s+outfile\b/,
+    /(?:^|[^a-z])or\s+['"]?\d+['"]?\s*=\s*['"]?\d+/,
+    /(?:^|[^a-z])and\s+['"]?\d+['"]?\s*=\s*['"]?\d+/,
+    /(?:--|#|\/\*)/,
+    /(?:\.\.\/|\.\.\\)/,
+    /<\s*script\b/,
+    /\bonerror\s*=/
+  ].some((pattern) => pattern.test(input));
+}
+
+function rejectSuspiciousRequest(req, res) {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const blockedUntil = blockedClients.get(ip) || 0;
+  if (blockedUntil > now) {
+    json(res, 429, { error: "请求过于频繁，请稍后再试" }, { "Retry-After": "60" });
+    return true;
+  }
+  if (blockedUntil && blockedUntil <= now) blockedClients.delete(ip);
+
+  const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
+  const windowMs = 60 * 1000;
+  const current = requestBuckets.get(ip) || { count: 0, apiCount: 0, resetAt: now + windowMs };
+  if (now > current.resetAt) {
+    current.count = 0;
+    current.apiCount = 0;
+    current.resetAt = now + windowMs;
+  }
+  current.count += 1;
+  if (pathname.startsWith("/api/")) current.apiCount += 1;
+  requestBuckets.set(ip, current);
+
+  const isUploadEndpoint = pathname.startsWith("/api/files/chunk/") || pathname === "/api/files";
+  const totalLimit = isUploadEndpoint ? 3000 : 900;
+  const apiLimit = isUploadEndpoint ? 2500 : 500;
+  if (current.count > totalLimit || current.apiCount > apiLimit) {
+    json(res, 429, { error: "请求过于频繁，请稍后再试" }, { "Retry-After": "30" });
+    return true;
+  }
+
+  const headerProbe = [
+    req.url,
+    req.headers["user-agent"],
+    req.headers.referer,
+    req.headers.cookie
+  ].join("\n");
+  if (containsAttackPayload(headerProbe)) {
+    const strike = suspiciousStrikes.get(ip) || { count: 0, resetAt: now + 10 * 60 * 1000 };
+    if (now > strike.resetAt) {
+      strike.count = 0;
+      strike.resetAt = now + 10 * 60 * 1000;
+    }
+    strike.count += 1;
+    suspiciousStrikes.set(ip, strike);
+    if (strike.count >= 8) blockedClients.set(ip, now + 2 * 60 * 1000);
+    json(res, 403, { error: "请求被安全策略拦截" });
+    return true;
+  }
+  return false;
 }
 
 function checkLoginRate(req, account) {
@@ -831,14 +990,37 @@ function parseMultipart(buffer, contentType) {
   return parts;
 }
 
+function sendClientRuntime(res) {
+  const source = fs.readFileSync(CLIENT_APP_FILE, "utf8");
+  const encoded = Buffer.from(source, "utf8").toString("base64");
+  const chunks = encoded.match(/.{1,2000}/g) || [];
+  const loader = `"use strict";(()=>{const d=[${chunks.map((chunk) => JSON.stringify(chunk)).join(",")}].join("");const b=Uint8Array.from(atob(d),c=>c.charCodeAt(0));(0,eval)(new TextDecoder().decode(b));})();`;
+  send(res, 200, loader, "text/javascript; charset=utf-8", {
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff"
+  });
+}
+
 function routeStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (url.pathname === "/client/runtime.js" || url.pathname === "/app.js") {
+    sendClientRuntime(res);
+    return true;
+  }
   if (url.pathname.startsWith("/avatars/")) {
     const avatarName = path.basename(decodeURIComponent(url.pathname.slice("/avatars/".length)));
     const avatarFile = path.join(AVATAR_ROOT, avatarName);
     if (!avatarFile.startsWith(AVATAR_ROOT) || !fs.existsSync(avatarFile)) return false;
     const ext = path.extname(avatarFile).toLowerCase();
     send(res, 200, fs.readFileSync(avatarFile), mimeTypes[ext] || "application/octet-stream", { "Cache-Control": "no-store" });
+    return true;
+  }
+  if (url.pathname.startsWith("/logos/")) {
+    const logoName = path.basename(decodeURIComponent(url.pathname.slice("/logos/".length)));
+    const logoFile = path.join(LOGO_ROOT, logoName);
+    if (!logoFile.startsWith(LOGO_ROOT) || !fs.existsSync(logoFile)) return false;
+    const ext = path.extname(logoFile).toLowerCase();
+    send(res, 200, fs.readFileSync(logoFile), mimeTypes[ext] || "application/octet-stream", { "Cache-Control": "no-store" });
     return true;
   }
   let pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
@@ -862,6 +1044,7 @@ function listPayload(db, user) {
   return {
     user: publicUser(user),
     majors: majorThemes,
+    classes: db.classes || [],
     settings: db.settings,
     categories: db.categories,
     notices: db.notices.slice().sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt)),
@@ -970,6 +1153,37 @@ async function handleApi(req, res) {
       return json(res, 200, { ok: true });
     }
 
+    if (method === "POST" && url.pathname === "/api/admin/classes") {
+      const user = requireSuperAdmin(req, res, db);
+      if (!user) return;
+      const body = await readJson(req);
+      const name = String(body.name || "").trim().slice(0, 80);
+      if (!name) return json(res, 400, { error: "班级名称不能为空" });
+      db.classes = Array.isArray(db.classes) ? db.classes : [];
+      if (db.classes.some((item) => item.name === name)) return json(res, 409, { error: "班级已存在" });
+      const item = { id: crypto.randomUUID(), name, createdAt: new Date().toISOString() };
+      db.classes.push(item);
+      appendOperationLog(db, user, "新增班级", name);
+      saveDb(db);
+      return json(res, 201, { class: item });
+    }
+
+    if (method === "DELETE" && url.pathname.startsWith("/api/admin/classes/")) {
+      const user = requireSuperAdmin(req, res, db);
+      if (!user) return;
+      const id = url.pathname.split("/").pop();
+      db.classes = Array.isArray(db.classes) ? db.classes : [];
+      const item = db.classes.find((entry) => entry.id === id);
+      if (!item) return json(res, 404, { error: "班级不存在" });
+      db.classes = db.classes.filter((entry) => entry.id !== id);
+      for (const account of db.users) {
+        if (account.className === item.name) account.className = "";
+      }
+      appendOperationLog(db, user, "删除班级", item.name);
+      saveDb(db);
+      return json(res, 200, { ok: true });
+    }
+
     if (method === "POST" && url.pathname === "/api/admin/notices") {
       const user = requireAdminUser(req, res, db);
       if (!user) return;
@@ -1026,6 +1240,7 @@ async function handleApi(req, res) {
         ...db.settings,
         siteName: String(body.siteName || db.settings.siteName).trim().slice(0, 80),
         logoText: String(body.logoText || db.settings.logoText).trim().slice(0, 20),
+        logoUrl: String(db.settings.logoUrl || "").trim().slice(0, 500),
         allowGuestBrowse: Boolean(body.allowGuestBrowse),
         requireLoginDownload: body.requireLoginDownload !== false,
         maxFileGb: Number(body.maxFileGb || db.settings.maxFileGb || 20),
@@ -1037,6 +1252,26 @@ async function handleApi(req, res) {
       appendOperationLog(db, user, "更新系统设置", "系统设置");
       saveDb(db);
       return json(res, 200, { settings: db.settings });
+    }
+
+    if (method === "POST" && url.pathname === "/api/admin/logo") {
+      const user = requireSuperAdmin(req, res, db);
+      if (!user) return;
+      const contentLength = Number(req.headers["content-length"] || 0);
+      if (contentLength > 3 * 1024 * 1024) return json(res, 413, { error: "Logo 图片不能超过 3MB" });
+      const parts = parseMultipart(await readBody(req, 3 * 1024 * 1024), req.headers["content-type"]);
+      const upload = parts.find((part) => part.name === "logo" && part.filename);
+      if (!upload || !upload.data.length) return json(res, 400, { error: "请选择 Logo 图片" });
+      const ext = path.extname(upload.filename).toLowerCase();
+      if (![".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext)) return json(res, 400, { error: "Logo 只支持 png、jpg、jpeg、gif、webp" });
+      ensureDir(LOGO_ROOT);
+      const logoName = `logo-${Date.now()}${ext}`;
+      fs.writeFileSync(path.join(LOGO_ROOT, logoName), upload.data);
+      db.settings.logoUrl = `/logos/${logoName}`;
+      db.settings.updatedAt = new Date().toISOString();
+      appendOperationLog(db, user, "上传网站 Logo", "系统设置", db.settings.logoUrl);
+      saveDb(db);
+      return json(res, 200, { settings: db.settings, logoUrl: db.settings.logoUrl });
     }
 
     if (method === "GET" && url.pathname === "/api/admin/module-records") {
@@ -1148,6 +1383,7 @@ async function handleApi(req, res) {
       user.name = String(body.name || user.name).trim().slice(0, 30);
       if (Object.prototype.hasOwnProperty.call(body, "avatar")) user.avatar = cleanUrl(body.avatar);
       user.major = majorThemes[body.major] ? body.major : normalizeMajor(user.major);
+      user.className = normalizeClassName(db, body.className ?? user.className);
       saveDb(db);
       return json(res, 200, { user: publicUser(user) });
     }
@@ -1181,7 +1417,6 @@ async function handleApi(req, res) {
       if (!account) return json(res, 400, { error: "账号不能为空" });
       if (!isSafeAccount(account)) return json(res, 400, { error: "账号只能包含字母、数字、下划线和短横线，长度 3-32 位" });
       if (db.users.some((user) => user.account === account)) return json(res, 409, { error: "账号已存在" });
-      if (creator.role === "admin" && creator.account !== "superadmin") return json(res, 403, { error: "只有超级管理员可以新增账号" });
       const role = creator.role === "teacher" ? "student" : (["student", "teacher", "admin"].includes(body.role) ? body.role : "student");
       const user = {
         id: crypto.randomUUID(),
@@ -1189,6 +1424,7 @@ async function handleApi(req, res) {
         role,
         name: String(body.name || account).trim().slice(0, 30),
         major: majorThemes[body.major] ? body.major : "info_security",
+        className: normalizeClassName(db, body.className),
         avatar: "",
         passwordHash: hashPassword(DEFAULT_PASSWORD),
         mustChangePassword: true,
@@ -1217,6 +1453,7 @@ async function handleApi(req, res) {
       target.name = String(body.name || target.name).trim().slice(0, 30);
       target.role = role;
       target.major = majorThemes[body.major] ? body.major : normalizeMajor(target.major);
+      target.className = normalizeClassName(db, body.className ?? target.className);
       if (body.mustChangePassword !== undefined) {
         target.mustChangePassword = body.mustChangePassword === true || body.mustChangePassword === "true";
       }
@@ -1371,7 +1608,7 @@ async function handleApi(req, res) {
       }
       if (!upload.receivedChunks.includes(index)) {
         upload.receivedChunks.push(index);
-        upload.receivedBytes += chunk.data.length;
+        upload.receivedBytes = Math.min(upload.size, Number(upload.receivedBytes || 0) + chunk.data.length);
       }
       saveDb(db);
       return json(res, 200, { receivedBytes: upload.receivedBytes, size: upload.size });
@@ -1539,21 +1776,22 @@ async function handleApi(req, res) {
       const file = db.files.find((item) => item.id === id);
       if (!file) return json(res, 404, { error: "文件不存在" });
       if (user.role !== "admin" && file.uploaderId !== user.id) return json(res, 403, { error: "权限不足" });
-      if (fs.existsSync(file.diskPath)) fs.unlinkSync(file.diskPath);
+      const diskDelete = deleteStoredFile(file);
       db.files = db.files.filter((item) => item.id !== id);
-      appendOperationLog(db, user, "删除资源", file.title, file.originalName);
+      appendOperationLog(db, user, "删除资源", file.title, `${file.originalName} / ${diskDelete.deleted ? "已删除磁盘文件" : "磁盘文件不存在"}`);
       saveDb(db);
-      return json(res, 200, { ok: true });
+      return json(res, 200, { ok: true, diskDeleted: diskDelete.deleted });
     }
 
     return json(res, 404, { error: "接口不存在" });
   } catch (error) {
     console.error(error);
-    return json(res, 500, { error: error.message || "服务器错误" });
+    return json(res, error.statusCode || 500, { error: error.message || "服务器错误" });
   }
 }
 
 function requestHandler(req, res) {
+  if (rejectSuspiciousRequest(req, res)) return;
   if (req.url.startsWith("/api/")) return handleApi(req, res);
   if (routeStatic(req, res)) return;
   send(res, 404, "Not found", "text/plain; charset=utf-8");

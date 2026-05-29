@@ -1,5 +1,28 @@
 const app = document.querySelector('#app');
 
+function installBrowserDebugGuards() {
+  const blockedKeys = new Set(['f12']);
+  const blockedModifiedKeys = new Set(['i', 'j', 'c', 'u', 's']);
+
+  document.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    const key = String(event.key || '').toLowerCase();
+    const usesCommandKey = event.ctrlKey || event.metaKey;
+    const isDevtoolsCombo = usesCommandKey && event.shiftKey && blockedModifiedKeys.has(key);
+    const isSourceOrSaveCombo = usesCommandKey && !event.shiftKey && ['u', 's'].includes(key);
+
+    if (blockedKeys.has(key) || isDevtoolsCombo || isSourceOrSaveCombo) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+}
+
+installBrowserDebugGuards();
+
 const state = {
   user: null,
   files: [],
@@ -9,6 +32,7 @@ const state = {
   downloadLogs: [],
   users: [],
   majors: {},
+  classes: [],
   settings: {},
   storage: {},
   tab: 'home',
@@ -39,6 +63,14 @@ function majorOptions(selected = '') {
   return Object.entries(state.majors || {})
     .map(([key, item]) => `<option value="${escapeHtml(key)}" ${selected === key ? 'selected' : ''}>${escapeHtml(item.label || key)}</option>`)
     .join('');
+}
+
+function classOptions(selected = '') {
+  return `<option value="">未设置班级</option>${(state.classes || [])
+    .map((item) => item.name || item)
+    .filter(Boolean)
+    .map((name) => `<option value="${escapeHtml(name)}" ${selected === name ? 'selected' : ''}>${escapeHtml(name)}</option>`)
+    .join('')}`;
 }
 
 function escapeHtml(value = '') {
@@ -79,9 +111,14 @@ function canUpload() {
   return ['teacher', 'admin'].includes(state.user?.role);
 }
 
+function canRegisterUsers() {
+  return ['teacher', 'admin'].includes(state.user?.role);
+}
+
 function allowedAdminMenus() {
   if (isSuperAdmin()) return adminMenus;
-  if (isAdmin()) return adminMenus.filter(([id]) => !['user', 'log', 'settings'].includes(id));
+  if (isAdmin()) return adminMenus.filter(([id]) => !['log', 'settings'].includes(id));
+  if (state.user?.role === 'teacher') return adminMenus.filter(([id]) => id === 'user');
   return [];
 }
 
@@ -93,7 +130,12 @@ async function api(path, options = {}) {
   });
   if (response.status === 204) return null;
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || '请求失败' };
+  }
   if (!response.ok) throw new Error(data.error || '请求失败');
   return data;
 }
@@ -107,6 +149,7 @@ function normalizeData(data = {}) {
   state.downloadLogs = Array.isArray(data.downloadLogs) ? data.downloadLogs : [];
   state.users = Array.isArray(data.users) ? data.users : [];
   state.majors = data.majors || {};
+  state.classes = Array.isArray(data.classes) ? data.classes : [];
   state.settings = data.settings || {};
   state.storage = data.storage || {};
 
@@ -184,7 +227,7 @@ function render() {
   app.innerHTML = `
     <header class="top-shell">
       <div class="brand-line">
-        <span class="brand-mark">${escapeHtml((state.settings.logoText || '软').slice(0, 1))}</span>
+        <span class="brand-mark">${state.settings.logoUrl ? `<img src="${escapeHtml(state.settings.logoUrl)}" alt="Logo">` : escapeHtml((state.settings.logoText || '软').slice(0, 1))}</span>
         <div>
           <strong>${escapeHtml(state.settings.siteName || '智慧校园软件资源管理平台')}</strong>
           <span>软件资源站 · 安装教程 · 版本管理 · 下载统计</span>
@@ -222,7 +265,7 @@ function renderCurrent() {
   if (state.tab === 'feedback') return renderFeedbackPage();
   if (state.tab === 'profile') return renderProfile();
   if (state.tab === 'upload') return canUpload() ? renderUploadCenter() : renderPermission('只有教师或管理员可以上传资源。');
-  if (state.tab === 'admin') return isAdmin() ? renderAdmin() : renderAdminGate();
+  if (state.tab === 'admin') return canRegisterUsers() ? renderAdmin() : renderAdminGate();
   return renderHome();
 }
 
@@ -464,6 +507,7 @@ function renderProfile() {
         <h2>个人中心</h2>
         <label>姓名<input name="name" value="${escapeHtml(state.user?.name || '')}"></label>
         <label>专业<select name="major">${Object.entries(state.majors || {}).map(([key, item]) => `<option value="${escapeHtml(key)}" ${state.user?.major === key ? 'selected' : ''}>${escapeHtml(item.label || key)}</option>`).join('')}</select></label>
+        <label>班级<select name="className">${classOptions(state.user?.className || '')}</select></label>
         <button type="submit">保存资料</button>
       </form>
       <form class="panel form avatar-panel" id="avatarForm">
@@ -554,7 +598,7 @@ function renderAdmin() {
       <div class="admin-workspace">
         <div class="panel dashboard-head">
           <div><h2>${escapeHtml(menus.find(([id]) => id === state.adminTab)?.[1] || '后台管理')}</h2><p class="muted">软件资源、文件上传、下载统计、反馈处理、权限与安全审计集中管理。</p></div>
-          <button type="button" class="secondary small" id="refreshStatusBtn">刷新数据</button>
+          ${isAdmin() ? '<button type="button" class="secondary small" id="refreshStatusBtn">刷新数据</button>' : ''}
         </div>
         ${renderAdminTab(status)}
       </div>
@@ -577,21 +621,119 @@ function renderAdminTab(status) {
 
 function renderAdminDashboard(status) {
   const top = state.files.slice().sort((a, b) => Number(b.downloadCount || 0) - Number(a.downloadCount || 0)).slice(0, 6);
+  const recent = state.files.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0, 8);
+  const categories = dashboardCategories();
+  const storageRows = dashboardStorageRows(status);
+  const memoryRate = status.memory?.total ? Math.round(Number(status.memory.used || 0) / Number(status.memory.total || 1) * 100) : 0;
   return `
+    <section class="system-dashboard">
+      <div class="dashboard-title">
+        <div>
+          <h2>系统整体仪表盘</h2>
+          <p>资源运行、用户规模、下载活跃、存储占用和待处理事项集中查看。</p>
+        </div>
+        <button type="button" class="secondary small" id="refreshStatusBtn">刷新数据</button>
+      </div>
+    </section>
     <section class="metric-grid">
-      ${miniStat('软件总数', status.counts.files, '资源库')}
-      ${miniStat('今日下载量', status.counts.todayDownloads, '当天')}
+      ${miniStat('软件资源', status.counts.files, `软件 ${status.counts.software || 0} · 镜像 ${status.counts.mirror || 0}`)}
+      ${miniStat('今日下载', status.counts.todayDownloads, '当天')}
       ${miniStat('总下载量', status.counts.totalDownloads, '累计')}
-      ${miniStat('用户总数', status.counts.users, '账号')}
+      ${miniStat('注册用户', status.counts.users, `学生 ${status.counts.students || 0} · 教师 ${status.counts.teachers || 0}`)}
       ${miniStat('待处理反馈', status.counts.pendingFeedback, '工单')}
       ${miniStat('在线会话', status.counts.sessions, '当前')}
     </section>
-    <section class="content-grid">
-      <div class="panel"><h3>近 7 日下载趋势</h3>${renderTrend(status.downloadLogs || [])}</div>
-      <div class="panel"><h3>热门软件下载排行</h3>${top.map(renderTopSoftware).join('') || `<p class="muted">暂无资源</p>`}</div>
-      <div class="panel wide"><h3>最近反馈</h3>${state.feedback.slice(0, 6).map(renderFeedbackItem).join('') || `<p class="muted">暂无反馈</p>`}</div>
+    <section class="dashboard-grid-pro">
+      <div class="panel dashboard-panel">
+        <h3>系统健康</h3>
+        <div class="health-grid">
+          <div><span>CPU</span><strong>${Number(status.cpu?.percent || 0)}%</strong><small>${escapeHtml(status.cpu?.cores || 0)} 核</small></div>
+          <div><span>内存</span><strong>${memoryRate}%</strong><small>${formatSize(status.memory?.used || 0)} / ${formatSize(status.memory?.total || 0)}</small></div>
+          <div><span>上传任务</span><strong>${Number(status.counts.activeUploads || 0)}</strong><small>进行中</small></div>
+          <div><span>运行时长</span><strong>${formatDuration(status.server?.processUptime || 0)}</strong><small>${escapeHtml(status.server?.node || '')}</small></div>
+        </div>
+      </div>
+      <div class="panel dashboard-panel">
+        <h3>存储占用</h3>
+        <div class="storage-meter-list">${storageRows.map((row) => `<div class="storage-meter"><div><b>${escapeHtml(row.label)}</b><span>${formatSize(row.used)} / ${formatSize(row.total)}</span></div><i><em style="width:${row.rate}%"></em></i></div>`).join('')}</div>
+      </div>
+      <div class="panel dashboard-panel wide">
+        <h3>近 7 日下载趋势</h3>
+        ${renderTrend(status.downloadLogs || [])}
+      </div>
+      <div class="panel dashboard-panel">
+        <h3>热门软件下载排行</h3>
+        ${top.map(renderTopSoftware).join('') || `<p class="muted">暂无资源</p>`}
+      </div>
+      <div class="panel dashboard-panel">
+        <h3>软件分类统计</h3>
+        <div class="compact-list">${categories.slice(0, 8).map((item) => `<div><span>${escapeHtml(item.name)}</span><b>${item.value}</b></div>`).join('') || `<p class="muted">暂无分类数据</p>`}</div>
+      </div>
+      <div class="panel dashboard-panel">
+        <h3>系统提醒</h3>
+        <article class="notice-row"><strong>安全建议</strong><span>上传文件已限制后缀和大小，建议后续接入病毒扫描。</span></article>
+        <article class="notice-row"><strong>待处理反馈</strong><span>当前还有 ${Number(status.counts.pendingFeedback || 0)} 条反馈需要处理。</span></article>
+        <article class="notice-row"><strong>存储清理</strong><span>删除资源时会同步删除磁盘文件，避免占用空间。</span></article>
+      </div>
+      <div class="panel wide dashboard-panel">
+        <h3>最新资源记录</h3>
+        <div class="dashboard-record-list">${recent.map((file) => `<article><strong>${escapeHtml(file.title || file.originalName)}</strong><span>${escapeHtml(file.category || '其他')}</span><span>${escapeHtml(file.uploaderName || '管理员')}</span><span>${formatSize(file.size)}</span><time>${formatDate(file.createdAt)}</time></article>`).join('') || `<p class="muted">暂无资源记录</p>`}</div>
+      </div>
     </section>
   `;
+}
+
+function dashboardStorageRows(status) {
+  return [
+    { label: '软件目录', info: status.storage?.software || {} },
+    { label: '镜像目录', info: status.storage?.mirror || {} },
+    { label: '数据目录', info: status.storage?.data || {} }
+  ].map((item) => {
+    const used = Number(item.info.resourceBytes || item.info.used || 0);
+    const total = Number(item.info.total || 0);
+    return { label: item.label, used, total, rate: total ? Math.min(100, Math.round(used / total * 100)) : 0 };
+  });
+}
+
+function formatDuration(seconds) {
+  const value = Math.max(0, Number(seconds || 0));
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  if (hours >= 24) return `${Math.floor(hours / 24)}天`;
+  if (hours) return `${hours}小时`;
+  return `${minutes}分钟`;
+}
+
+function dashboardCategories() {
+  const map = new Map();
+  for (const file of state.files) map.set(file.category || '其他资源', (map.get(file.category || '其他资源') || 0) + 1);
+  return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+}
+
+function dashboardStorageBreakdown() {
+  const groups = [
+    { name: '安装包', test: (ext) => ['.exe', '.msi', '.dmg', '.pkg', '.deb', '.rpm'].includes(ext), value: 0 },
+    { name: '文档', test: (ext) => ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'].includes(ext), value: 0 },
+    { name: '镜像', test: (ext, file) => file.zone === 'mirror' || ['.iso', '.img'].includes(ext), value: 0 },
+    { name: '压缩包', test: (ext) => ['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext), value: 0 },
+    { name: '其他', test: () => true, value: 0 }
+  ];
+  for (const file of state.files) {
+    const ext = `.${String(file.originalName || '').split('.').pop() || ''}`.toLowerCase();
+    const group = groups.find((item) => item.test(ext, file));
+    group.value += Number(file.size || 0);
+  }
+  return groups.filter((item) => item.value > 0);
+}
+
+function latestResourceRecords() {
+  return state.files.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0, 8).map((file) => ({
+    name: file.title || file.originalName || '资源',
+    type: file.category || '其他资源',
+    user: file.uploaderName || '管理员',
+    status: file.status === 'published' ? '已通过' : '待审核',
+    time: formatDate(file.createdAt)
+  }));
 }
 
 function renderTrend(logs) {
@@ -724,18 +866,34 @@ function renderAdminFeedback() {
 }
 
 function renderAdminUsers() {
-  if (!isSuperAdmin()) return renderPermission('用户权限管理仅超级管理员可用。');
+  if (!canRegisterUsers()) return renderPermission('只有管理员或教师可以注册账号。');
+  const canEditUsers = isSuperAdmin();
+  const canChooseRole = isAdmin();
   const userRows = (state.users || []).map((user) => {
     const isBuiltIn = user.account === 'superadmin';
     const roleOptions = ['student', 'teacher', 'admin']
       .map((role) => `<option value="${role}" ${user.role === role ? 'selected' : ''}>${escapeHtml(roleLabel[role] || role)}</option>`)
       .join('');
+    if (!canEditUsers) {
+      return `
+        <div class="user-permission-row">
+          <label>姓名<input value="${escapeHtml(user.name)}" readonly></label>
+          <div class="account-cell"><span>账号</span><b>${escapeHtml(user.account)}</b></div>
+          <label>角色<input value="${escapeHtml(roleLabel[user.role] || user.role)}" readonly></label>
+          <label>专业<input value="${escapeHtml(state.majors[user.major]?.name || user.major || '-')}" readonly></label>
+          <label>班级<input value="${escapeHtml(user.className || '-')}" readonly></label>
+          <label>状态<input value="${user.mustChangePassword ? '需改密' : '正常'}" readonly></label>
+          <div class="row-actions"><span class="muted">仅超级管理员可调整权限</span></div>
+        </div>
+      `;
+    }
     return `
       <form class="user-permission-row" data-id="${escapeHtml(user.id)}">
         <label>姓名<input name="name" value="${escapeHtml(user.name)}" ${isBuiltIn ? 'readonly' : ''}></label>
         <div class="account-cell"><span>账号</span><b>${escapeHtml(user.account)}</b></div>
         <label>角色<select name="role" ${isBuiltIn ? 'disabled' : ''}>${roleOptions}</select></label>
         <label>专业<select name="major" ${isBuiltIn ? 'disabled' : ''}>${majorOptions(user.major)}</select></label>
+        <label>班级<select name="className" ${isBuiltIn ? 'disabled' : ''}>${classOptions(user.className || '')}</select></label>
         <label>状态<select name="mustChangePassword" ${isBuiltIn ? 'disabled' : ''}><option value="false" ${!user.mustChangePassword ? 'selected' : ''}>正常</option><option value="true" ${user.mustChangePassword ? 'selected' : ''}>需改密</option></select></label>
         <div class="row-actions">
           ${isBuiltIn ? '<span class="muted">内置账号</span>' : `<button type="submit" class="small">保存权限</button><button type="button" class="danger small" data-delete-user="${escapeHtml(user.id)}">删除</button>`}
@@ -746,22 +904,34 @@ function renderAdminUsers() {
   return `
     <section class="content-grid">
       <form class="panel form" id="userForm">
-        <h3>新增用户</h3>
+        <h3>注册账号</h3>
         <label>账号<input name="account" required placeholder="学号 / 工号"></label>
         <label>姓名<input name="name" required></label>
-        <label>角色<select name="role"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select></label>
+        ${canChooseRole ? '<label>角色<select name="role"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select></label>' : '<input type="hidden" name="role" value="student"><label>角色<input value="学生" readonly></label>'}
         <label>专业<select name="major">${majorOptions()}</select></label>
-        <button type="submit">新增账号</button>
-        <p class="muted">新账号默认密码为 123456，首次登录强制修改。</p>
+        <label>班级<select name="className">${classOptions()}</select></label>
+        <button type="submit">注册账号</button>
+        <p class="muted">${canChooseRole ? '管理员可以注册学生、教师和管理员账号。' : '教师只能注册学生账号。'}新账号默认密码为 123456，首次登录强制修改。</p>
       </form>
+      ${isSuperAdmin() ? `
+      <form class="panel form" id="classForm">
+        <h3>新增班级</h3>
+        <label>班级全称<input name="name" required placeholder="例如：2025级信息安全技术应用班"></label>
+        <button type="submit">新增班级</button>
+        <p class="muted">注册账号和编辑用户时会从这里选择完整班级名。</p>
+      </form>
+      <div class="panel wide">
+        <h3>班级列表</h3>
+        <div class="class-list">${(state.classes || []).map((item) => `<div class="class-chip"><span>${escapeHtml(item.name || item)}</span><button type="button" class="danger small" data-delete-class="${escapeHtml(item.id || item)}">删除</button></div>`).join('') || '<p class="muted">暂无班级</p>'}</div>
+      </div>` : ''}
       <div class="panel wide">
         <div class="section-head">
           <div>
             <h3>用户列表</h3>
-            <p class="muted">可直接调整已有账号的角色、专业和首次登录改密状态。</p>
+            <p class="muted">${canEditUsers ? '可直接调整已有账号的角色、专业和首次登录改密状态。' : '当前仅显示你有权限查看的账号。'}</p>
           </div>
         </div>
-        <div class="permission-list">${userRows || `<p class="muted">暂无用户</p>`}</div>
+        <div class="permission-list">${userRows || `<p class="muted">暂无账号</p>`}</div>
       </div>
     </section>
   `;
@@ -774,26 +944,66 @@ function renderAdminLogs(status) {
 
 function renderAdminSettings() {
   if (!isSuperAdmin()) return renderPermission('系统设置仅超级管理员可用。');
+  const logoUrl = state.settings.logoUrl || '';
   return `
-    <form class="panel form settings-form" id="settingsForm">
-      <h3>系统设置</h3>
-      <label>网站名称<input name="siteName" value="${escapeHtml(state.settings.siteName || '智慧校园软件资源管理平台')}"></label>
-      <label>Logo 文字<input name="logoText" value="${escapeHtml(state.settings.logoText || '校园软件站')}"></label>
-      <label>最大文件 GB<input name="maxFileGb" type="number" value="${escapeHtml(state.settings.maxFileGb || 20)}"></label>
-      <label>分片大小 MB<input name="maxChunkMb" type="number" value="${escapeHtml(state.settings.maxChunkMb || 8)}"></label>
-      <label class="check"><input type="checkbox" name="requireLoginDownload" ${state.settings.requireLoginDownload !== false ? 'checked' : ''}>下载需要登录</label>
-      <label class="check"><input type="checkbox" name="maintenanceMode" ${state.settings.maintenanceMode ? 'checked' : ''}>维护模式</label>
-      <label>维护提示<textarea name="maintenanceMessage">${escapeHtml(state.settings.maintenanceMessage || '')}</textarea></label>
-      <button type="submit">保存设置</button>
-    </form>
+    <section class="content-grid">
+      <form class="panel form settings-form" id="settingsForm">
+        <h3>系统设置</h3>
+        <label>网站名称<input name="siteName" value="${escapeHtml(state.settings.siteName || '智慧校园软件资源管理平台')}"></label>
+        <label>Logo 文字<input name="logoText" value="${escapeHtml(state.settings.logoText || '校园软件站')}"></label>
+        <label>最大文件 GB<input name="maxFileGb" type="number" value="${escapeHtml(state.settings.maxFileGb || 20)}"></label>
+        <label>分片大小 MB<input name="maxChunkMb" type="number" value="${escapeHtml(state.settings.maxChunkMb || 8)}"></label>
+        <label class="check"><input type="checkbox" name="requireLoginDownload" ${state.settings.requireLoginDownload !== false ? 'checked' : ''}>下载需要登录</label>
+        <label class="check"><input type="checkbox" name="maintenanceMode" ${state.settings.maintenanceMode ? 'checked' : ''}>维护模式</label>
+        <label>维护提示<textarea name="maintenanceMessage">${escapeHtml(state.settings.maintenanceMessage || '')}</textarea></label>
+        <button type="submit">保存设置</button>
+      </form>
+      <form class="panel form settings-form logo-settings-form" id="logoForm">
+        <h3>Logo 上传</h3>
+        <div class="logo-preview">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="当前 Logo">` : `<span>${escapeHtml((state.settings.logoText || '软').slice(0, 1))}</span>`}</div>
+        <label>选择 Logo 图片<input name="logo" type="file" accept="image/png,image/jpeg,image/gif,image/webp" required></label>
+        <button type="submit">上传 Logo</button>
+        <p class="muted">支持 png、jpg、jpeg、gif、webp，大小不超过 3MB。上传后顶部导航优先显示图片 Logo。</p>
+      </form>
+    </section>
   `;
 }
 
 function setProgress(value) {
   const progress = document.querySelector('#uploadProgress');
   if (!progress) return;
-  progress.querySelector('.progress-bar').style.width = `${value}%`;
-  progress.querySelector('span').textContent = `${value}%`;
+  const percent = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+  progress.querySelector('.progress-bar').style.width = `${percent}%`;
+  progress.querySelector('span').textContent = `${percent}%`;
+}
+
+async function uploadFileWithProgress(form, file, uploadedBefore, totalBytes) {
+  const initPayload = Object.fromEntries(new FormData(form));
+  delete initPayload.file;
+  initPayload.filename = file.name;
+  initPayload.size = file.size;
+
+  const init = await api('/api/files/chunk/init', { method: 'POST', body: JSON.stringify(initPayload) });
+  const uploadId = init.uploadId;
+  const chunkSize = Number(init.chunkSize || 8 * 1024 * 1024);
+  if (!uploadId || !Number.isFinite(chunkSize) || chunkSize <= 0) throw new Error('上传初始化失败');
+
+  let sent = 0;
+  let index = 0;
+  while (sent < file.size) {
+    const end = Math.min(sent + chunkSize, file.size);
+    const data = new FormData();
+    data.set('uploadId', uploadId);
+    data.set('index', String(index));
+    data.set('offset', String(sent));
+    data.set('chunk', file.slice(sent, end), file.name);
+    const result = await api('/api/files/chunk/upload', { method: 'POST', body: data });
+    sent = Math.max(end, Number(result.receivedBytes || 0));
+    index += 1;
+    setProgress(((uploadedBefore + sent) / totalBytes) * 100);
+  }
+
+  await api('/api/files/chunk/complete', { method: 'POST', body: JSON.stringify({ uploadId }) });
 }
 
 function formToJson(form) {
@@ -896,6 +1106,19 @@ document.addEventListener('click', async (event) => {
     state.tab = 'admin';
     state.adminTab = 'user';
     render();
+    return;
+  }
+
+  const deleteClass = event.target.closest('[data-delete-class]');
+  if (deleteClass) {
+    if (!confirm('确定删除这个班级吗？已有用户的班级信息会清空。')) return;
+    await api(`/api/admin/classes/${deleteClass.dataset.deleteClass}`, { method: 'DELETE' });
+    state.message = '班级已删除';
+    await bootstrap();
+    state.tab = 'admin';
+    state.adminTab = 'user';
+    render();
+    return;
   }
 });
 
@@ -954,11 +1177,13 @@ document.addEventListener('submit', async (event) => {
       event.preventDefault();
       const files = [...form.querySelector('input[type="file"]').files];
       if (!files.length) throw new Error('请选择文件');
+      const totalBytes = files.reduce((sum, file) => sum + file.size, 0) || 1;
+      let uploadedBytes = 0;
+      setProgress(0);
       for (let i = 0; i < files.length; i += 1) {
-        const data = new FormData(form);
-        data.set('file', files[i], files[i].name);
-        setProgress(Math.round((i / files.length) * 100));
-        await api('/api/files', { method: 'POST', body: data });
+        await uploadFileWithProgress(form, files[i], uploadedBytes, totalBytes);
+        uploadedBytes += files[i].size;
+        setProgress((uploadedBytes / totalBytes) * 100);
       }
       setProgress(100);
       state.message = '资源上传成功';
@@ -1043,6 +1268,30 @@ document.addEventListener('submit', async (event) => {
       state.tab = 'admin';
       state.adminTab = 'settings';
       render();
+      return;
+    }
+
+    if (form.id === 'logoForm') {
+      event.preventDefault();
+      const data = new FormData(form);
+      await api('/api/admin/logo', { method: 'POST', body: data });
+      state.message = 'Logo 已上传';
+      await bootstrap();
+      state.tab = 'admin';
+      state.adminTab = 'settings';
+      render();
+      return;
+    }
+
+    if (form.id === 'classForm') {
+      event.preventDefault();
+      await api('/api/admin/classes', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      state.message = '班级已新增';
+      await bootstrap();
+      state.tab = 'admin';
+      state.adminTab = 'user';
+      render();
+      return;
     }
   } catch (error) {
     event.preventDefault();
