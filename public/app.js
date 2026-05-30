@@ -23,6 +23,9 @@ function installBrowserDebugGuards() {
 
 installBrowserDebugGuards();
 
+const PASSWORD_RULE_TEXT = '新密码至少 8 位，且必须包含至少一个大写字母、一个小写字母和一个特殊符号。';
+const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$/;
+
 const state = {
   user: null,
   files: [],
@@ -138,6 +141,12 @@ async function api(path, options = {}) {
   }
   if (!response.ok) throw new Error(data.error || '请求失败');
   return data;
+}
+
+function validatePasswordPolicy(password) {
+  const value = String(password || '');
+  if (PASSWORD_PATTERN.test(value)) return '';
+  return PASSWORD_RULE_TEXT;
 }
 
 function normalizeData(data = {}) {
@@ -520,7 +529,8 @@ function renderProfile() {
       <form class="panel form" id="passwordForm">
         <h2>修改密码</h2>
         <label>原密码<input name="oldPassword" type="password" required></label>
-        <label>新密码<input name="newPassword" type="password" minlength="6" required></label>
+        <label>新密码<input name="newPassword" type="password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}" title="${PASSWORD_RULE_TEXT}" required></label>
+        <p class="muted">${PASSWORD_RULE_TEXT}</p>
         <button type="submit">修改密码</button>
       </form>
       <div class="panel wide"><h2>下载记录</h2>${state.downloadLogs.map((log) => `<article class="rank-row"><strong>下</strong><div><b>${escapeHtml(log.fileTitle || log.originalName || '资源')}</b><span>${formatDate(log.createdAt)}</span></div></article>`).join('') || `<p class="muted">暂无下载记录</p>`}</div>
@@ -529,7 +539,7 @@ function renderProfile() {
 }
 
 function renderPasswordModal() {
-  return `<div class="modal-mask"><form class="modal form" id="mustPasswordForm"><h2>首次登录请修改密码</h2><label>原密码<input name="oldPassword" type="password" required></label><label>新密码<input name="newPassword" type="password" minlength="6" required></label><button type="submit">确认修改</button><div class="error"></div></form></div>`;
+  return `<div class="modal-mask"><form class="modal form" id="mustPasswordForm"><h2>首次登录请修改密码</h2><label>原密码<input name="oldPassword" type="password" required></label><label>新密码<input name="newPassword" type="password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}" title="${PASSWORD_RULE_TEXT}" required></label><p class="muted">${PASSWORD_RULE_TEXT}</p><button type="submit">确认修改</button><div class="error"></div></form></div>`;
 }
 
 function renderUploadCenter() {
@@ -1136,7 +1146,10 @@ document.addEventListener('submit', async (event) => {
 
     if (form.id === 'passwordForm' || form.id === 'mustPasswordForm') {
       event.preventDefault();
-      await api('/api/change-password', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      const payload = Object.fromEntries(new FormData(form));
+      const passwordError = validatePasswordPolicy(payload.newPassword);
+      if (passwordError) throw new Error(passwordError);
+      await api('/api/change-password', { method: 'POST', body: JSON.stringify(payload) });
       state.message = '密码已修改';
       await bootstrap();
       return;

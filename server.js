@@ -125,6 +125,15 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hashPassword(password, salt).split(":")[1]));
 }
 
+function validatePasswordPolicy(password) {
+  const value = String(password || "");
+  if (value.length < 8) return "新密码至少 8 位";
+  if (!/[A-Z]/.test(value)) return "新密码必须包含至少一个大写字母";
+  if (!/[a-z]/.test(value)) return "新密码必须包含至少一个小写字母";
+  if (!/[^A-Za-z0-9]/.test(value)) return "新密码必须包含至少一个特殊符号";
+  return "";
+}
+
 function seedDb() {
   ensureDir(DATA_DIR);
   ensureDir(SOFTWARE_ROOT);
@@ -1365,7 +1374,8 @@ async function handleApi(req, res) {
       const user = requireUser(req, res, db);
       if (!user) return;
       const body = await readJson(req);
-      if (String(body.newPassword || "").length < 6) return json(res, 400, { error: "新密码至少 6 位" });
+      const passwordError = validatePasswordPolicy(body.newPassword);
+      if (passwordError) return json(res, 400, { error: passwordError });
       if (!verifyPassword(String(body.oldPassword || ""), user.passwordHash)) {
         return json(res, 400, { error: "原密码不正确" });
       }
