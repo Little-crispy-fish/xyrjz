@@ -10,6 +10,7 @@ if not defined PORT set "PORT=3000"
 set "APP_URL=http://localhost:%PORT%"
 set "RUNTIME_DIR=%APP_DIR%.runtime"
 set "LOCAL_NODE_DIR=%RUNTIME_DIR%\node"
+set "NPM_CMD="
 set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%PS_EXE%" set "PS_EXE=powershell"
 
@@ -81,14 +82,25 @@ echo [OK] Node.js found: !NODE_VERSION!
 exit /b 0
 
 :ensure_npm
+if exist "%LOCAL_NODE_DIR%\npm.cmd" (
+  set "NPM_CMD=%LOCAL_NODE_DIR%\npm.cmd"
+  for /f "delims=" %%v in ('"%LOCAL_NODE_DIR%\npm.cmd" -v') do set "NPM_VERSION=%%v"
+  echo [OK] Local portable npm found: !NPM_VERSION!
+  exit /b 0
+)
+
 where npm >nul 2>nul
 if not errorlevel 1 (
-  for /f "delims=" %%v in ('npm -v') do set "NPM_VERSION=%%v"
+  for /f "delims=" %%p in ('where npm') do (
+    if not defined NPM_CMD set "NPM_CMD=%%p"
+  )
+  for /f "delims=" %%v in ('"!NPM_CMD!" -v') do set "NPM_VERSION=%%v"
   echo [OK] npm found: !NPM_VERSION!
   exit /b 0
 )
 
-echo [ERROR] npm was not found. Reinstall Node.js LTS, then run this BAT file again.
+echo [ERROR] npm was not found. The portable Node.js package may be incomplete.
+echo Delete "%RUNTIME_DIR%" and run this BAT file again.
 pause
 exit /b 1
 
@@ -109,9 +121,9 @@ exit /b 0
 echo.
 echo [STEP] Installing/checking npm dependencies...
 if exist "package-lock.json" (
-  call npm ci
+  call "%NPM_CMD%" ci
 ) else (
-  call npm install
+  call "%NPM_CMD%" install
 )
 
 if errorlevel 1 (
@@ -140,7 +152,7 @@ echo [STEP] Starting server...
 echo Log file: %APP_DIR%server.out.log
 echo Error log: %APP_DIR%server.err.log
 
-start "Campus Software Site Server" /min cmd /c "cd /d ""%APP_DIR%"" && npm start >> ""%APP_DIR%server.out.log"" 2>> ""%APP_DIR%server.err.log"""
+start "Campus Software Site Server" /min cmd /c "cd /d ""%APP_DIR%"" && call ""%NPM_CMD%"" start >> ""%APP_DIR%server.out.log"" 2>> ""%APP_DIR%server.err.log"""
 
 echo [STEP] Waiting for server...
 for /l %%i in (1,1,20) do (
