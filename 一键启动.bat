@@ -13,6 +13,8 @@ set "LOCAL_NODE_DIR=%RUNTIME_DIR%\node"
 set "NPM_CMD="
 set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%PS_EXE%" set "PS_EXE=powershell"
+set "TIMEOUT_EXE=%SystemRoot%\System32\timeout.exe"
+set "PING_EXE=%SystemRoot%\System32\ping.exe"
 
 echo.
 echo ========================================
@@ -138,7 +140,7 @@ exit /b 0
 :start_server
 echo.
 echo [STEP] Checking port %PORT%...
-"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PORT; $conn = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue; if ($conn) { exit 0 } else { exit 1 }"
+call :check_port
 if not errorlevel 1 (
   echo [INFO] Port %PORT% is already listening. Opening browser...
   start "" "%APP_URL%"
@@ -152,11 +154,11 @@ echo [STEP] Starting server...
 echo Log file: %APP_DIR%server.out.log
 echo Error log: %APP_DIR%server.err.log
 
-start "Campus Software Site Server" /min cmd /c "cd /d ""%APP_DIR%"" && call ""%NPM_CMD%"" start >> ""%APP_DIR%server.out.log"" 2>> ""%APP_DIR%server.err.log"""
+start "Campus Software Site Server" /d "%APP_DIR%" /min "%ComSpec%" /c call "%APP_DIR%run-server.bat"
 
 echo [STEP] Waiting for server...
 for /l %%i in (1,1,20) do (
-  "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PORT; $conn = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue; if ($conn) { exit 0 } else { exit 1 }"
+  call :check_port
   if not errorlevel 1 (
     echo [OK] Server started.
     start "" "%APP_URL%"
@@ -166,7 +168,7 @@ for /l %%i in (1,1,20) do (
     pause
     exit /b 0
   )
-  timeout /t 1 /nobreak >nul
+  call :wait_one_second
 )
 
 echo [ERROR] Server startup timed out. Check logs:
@@ -174,3 +176,21 @@ echo %APP_DIR%server.out.log
 echo %APP_DIR%server.err.log
 pause
 exit /b 1
+
+:check_port
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PORT; $client = New-Object Net.Sockets.TcpClient; try { $client.Connect('127.0.0.1', $port); $client.Close(); exit 0 } catch { exit 1 }"
+exit /b %ERRORLEVEL%
+
+:wait_one_second
+if exist "%PING_EXE%" (
+  "%PING_EXE%" -n 2 127.0.0.1 >nul
+  exit /b 0
+)
+
+if exist "%TIMEOUT_EXE%" (
+  "%TIMEOUT_EXE%" /t 1 /nobreak >nul
+  exit /b 0
+)
+
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 1"
+exit /b 0
