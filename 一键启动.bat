@@ -10,6 +10,8 @@ if not defined PORT set "PORT=3000"
 set "APP_URL=http://localhost:%PORT%"
 set "RUNTIME_DIR=%APP_DIR%.runtime"
 set "LOCAL_NODE_DIR=%RUNTIME_DIR%\node"
+set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PS_EXE%" set "PS_EXE=powershell"
 
 echo.
 echo ========================================
@@ -58,7 +60,7 @@ if exist "%LOCAL_NODE_DIR%\node.exe" (
 )
 
 echo [INFO] Node.js was not found. Downloading portable Node.js LTS into this project...
-call :install_portable_node
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%APP_DIR%setup-portable-node.ps1"
 if errorlevel 1 (
   echo [ERROR] Portable Node.js setup failed.
   echo Check network access to https://nodejs.org/ and run this BAT file again.
@@ -77,40 +79,6 @@ if errorlevel 1 (
 for /f "delims=" %%v in ('node -v') do set "NODE_VERSION=%%v"
 echo [OK] Node.js found: !NODE_VERSION!
 exit /b 0
-
-:install_portable_node
-where powershell >nul 2>nul
-if errorlevel 1 (
-  echo [ERROR] PowerShell is required to download and extract portable Node.js.
-  exit /b 1
-)
-
-if not exist "%RUNTIME_DIR%" mkdir "%RUNTIME_DIR%"
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ErrorActionPreference = 'Stop';" ^
-  "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" ^
-  "$runtime = $env:RUNTIME_DIR;" ^
-  "$target = $env:LOCAL_NODE_DIR;" ^
-  "$arch = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' };" ^
-  "$index = Invoke-RestMethod 'https://nodejs.org/dist/index.json';" ^
-  "$release = $index | Where-Object { $_.lts -and ($_.files -contains ('win-' + $arch + '-zip')) } | Select-Object -First 1;" ^
-  "if (-not $release) { throw 'No compatible Node.js LTS release was found.' }" ^
-  "$version = $release.version;" ^
-  "$zipName = 'node-' + $version + '-win-' + $arch + '.zip';" ^
-  "$url = 'https://nodejs.org/dist/' + $version + '/' + $zipName;" ^
-  "$zipPath = Join-Path $runtime $zipName;" ^
-  "$extractDir = Join-Path $runtime ('node-' + $version + '-win-' + $arch);" ^
-  "if (Test-Path $target) { Remove-Item -LiteralPath $target -Recurse -Force }" ^
-  "if (Test-Path $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }" ^
-  "Write-Host ('Downloading ' + $url);" ^
-  "Invoke-WebRequest -Uri $url -OutFile $zipPath;" ^
-  "Expand-Archive -LiteralPath $zipPath -DestinationPath $runtime -Force;" ^
-  "Rename-Item -LiteralPath $extractDir -NewName 'node';" ^
-  "Remove-Item -LiteralPath $zipPath -Force;" ^
-  "& (Join-Path $target 'node.exe') -v"
-
-exit /b %ERRORLEVEL%
 
 :ensure_npm
 where npm >nul 2>nul
@@ -158,7 +126,7 @@ exit /b 0
 :start_server
 echo.
 echo [STEP] Checking port %PORT%...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PORT; $conn = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue; if ($conn) { exit 0 } else { exit 1 }"
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PORT; $conn = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue; if ($conn) { exit 0 } else { exit 1 }"
 if not errorlevel 1 (
   echo [INFO] Port %PORT% is already listening. Opening browser...
   start "" "%APP_URL%"
@@ -176,7 +144,7 @@ start "Campus Software Site Server" /min cmd /c "cd /d ""%APP_DIR%"" && npm star
 
 echo [STEP] Waiting for server...
 for /l %%i in (1,1,20) do (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PORT; $conn = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue; if ($conn) { exit 0 } else { exit 1 }"
+  "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$port = [int]$env:PORT; $conn = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue; if ($conn) { exit 0 } else { exit 1 }"
   if not errorlevel 1 (
     echo [OK] Server started.
     start "" "%APP_URL%"
