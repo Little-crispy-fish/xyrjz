@@ -20,7 +20,9 @@ const SOFTWARE_ROOT = process.env.SOFTWARE_ROOT || ("D:" + path.sep + "\u8f6f\u4
 const MIRROR_ROOT = process.env.MIRROR_ROOT || ("D:" + path.sep + "\u955c\u50cf");
 const AVATAR_ROOT = path.join(DATA_DIR, "avatars");
 const LOGO_ROOT = path.join(DATA_DIR, "logos");
+const USER_STORAGE_ROOT = path.join(DATA_DIR, "user-storage");
 const DEFAULT_PASSWORD = "123456";
+const USER_STORAGE_QUOTA_BYTES = Number(process.env.USER_STORAGE_QUOTA_MB || 500) * 1024 * 1024;
 const SUPERADMIN_PASSWORD_FILE = path.join(DATA_DIR, "superadmin-initial-password.txt");
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_MB || 900) * 1024 * 1024;
 const MAX_FILE_BYTES = Number(process.env.MAX_FILE_GB || 20) * 1024 * 1024 * 1024;
@@ -140,6 +142,7 @@ function seedDb() {
   ensureDir(MIRROR_ROOT);
   ensureDir(AVATAR_ROOT);
   ensureDir(LOGO_ROOT);
+  ensureDir(USER_STORAGE_ROOT);
   if (fs.existsSync(DB_FILE)) return;
   const now = new Date().toISOString();
   const superAdminPassword = process.env.SUPERADMIN_PASSWORD || crypto.randomBytes(12).toString("base64url");
@@ -233,6 +236,10 @@ function ensureDbShape(db) {
   }
   if (!Array.isArray(db.uploads)) {
     db.uploads = [];
+    changed = true;
+  }
+  if (!Array.isArray(db.userFiles)) {
+    db.userFiles = [];
     changed = true;
   }
   if (!db.adminModules || typeof db.adminModules !== "object") {
@@ -574,6 +581,74 @@ function deleteStoredFile(file) {
 function getUploadStore(db) {
   if (!Array.isArray(db.uploads)) db.uploads = [];
   return db.uploads;
+}
+
+function getUserFileStore(db) {
+  if (!Array.isArray(db.userFiles)) db.userFiles = [];
+  return db.userFiles;
+}
+
+function userStorageDir(userId) {
+  return path.join(USER_STORAGE_ROOT, safeName(userId));
+}
+
+function userStorageUsage(db, userId) {
+  const files = getUserFileStore(db).filter((file) => file.userId === userId);
+  return files.reduce((sum, file) => sum + Number(file.size || 0), 0);
+}
+
+function publicUserFile(file) {
+  return {
+    id: file.id,
+    originalName: file.originalName,
+    title: file.title,
+    size: Number(file.size || 0),
+    contentType: file.contentType || "application/octet-stream",
+    createdAt: file.createdAt,
+    downloadUrl: `/api/profile/files/${file.id}/download`
+  };
+}
+
+function userStoragePayload(db, user) {
+  const usedBytes = user.role === "guest" ? 0 : userStorageUsage(db, user.id);
+  return {
+    quotaBytes: USER_STORAGE_QUOTA_BYTES,
+    usedBytes,
+    remainingBytes: Math.max(0, USER_STORAGE_QUOTA_BYTES - usedBytes)
+  };
+}
+
+function deleteUserStorageFile(file) {
+  const rawPath = String(file?.diskPath || "").trim();
+  if (!rawPath) return { deleted: false, reason: "empty_path" };
+  const diskPath = path.resolve(rawPath);
+  const root = userStorageDir(file.userId);
+  if (!isInsideDir(diskPath, root)) {
+    throw new Error("个人文件路径不在允许的存储目录内，已停止删除");
+  }
+  if (!fs.existsSync(diskPath)) return { deleted: false, reason: "missing" };
+  const stat = fs.statSync(diskPath);
+  if (!stat.isFile()) throw new Error("目标不是文件，已停止删除");
+  fs.unlinkSync(diskPath);
+  return { deleted: true };
+}
+
+function deleteUserStorageForUser(db, userId) {
+  const files = getUserFileStore(db).filter((file) => file.userId === userId);
+  for (const file of files) {
+    try {
+      deleteUserStorageFile(file);
+    } catch (error) {
+      console.error(`delete user storage failed: ${error.message}`);
+    }
+  }
+  db.userFiles = getUserFileStore(db).filter((file) => file.userId !== userId);
+  const dir = userStorageDir(userId);
+  try {
+    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+  } catch {
+    // Directory cleanup is best effort; file metadata has already been removed.
+  }
 }
 
 function getAdminModuleStore(db, key) {
@@ -1060,12 +1135,13 @@ function listPayload(db, user) {
     feedback: user.role === "guest" ? [] : db.feedback.filter((item) => item.userId === user.id || user.role === "admin").sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     downloadLogs: user.role === "guest" ? [] : db.downloadLogs.filter((item) => item.userId === user.id || user.role === "admin").sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100),
     files: db.files.map((file) => ({ ...publicFile(file), canDelete: user.role === "admin" || file.uploaderId === user.id })),
+    userFiles: user.role === "guest" ? [] : getUserFileStore(db).filter((file) => file.userId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicUserFile),
     confessions: db.confessions.map((item) => ({
       ...item,
       canDelete: user.role === "admin" || item.userId === user.id
     })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     users: visibleUsers,
-    storage: { softwareRoot: SOFTWARE_ROOT, mirrorRoot: MIRROR_ROOT }
+    storage: { softwareRoot: SOFTWARE_ROOT, mirrorRoot: MIRROR_ROOT, user: userStoragePayload(db, user) }
   };
 }
 
@@ -1418,6 +1494,78 @@ async function handleApi(req, res) {
       return json(res, 200, { user: publicUser(user) });
     }
 
+    if (method === "POST" && url.pathname === "/api/profile/files") {
+      const user = requireUser(req, res, db);
+      if (!user) return;
+      if (blocksBeforePasswordChange(req, res, user)) return;
+      const contentLength = Number(req.headers["content-length"] || 0);
+      if (contentLength > USER_STORAGE_QUOTA_BYTES + 1024 * 1024) return json(res, 413, { error: "个人文件不能超过 500MB" });
+      const parts = parseMultipart(await readBody(req, USER_STORAGE_QUOTA_BYTES + 1024 * 1024), req.headers["content-type"]);
+      const upload = parts.find((part) => part.name === "file" && part.filename);
+      if (!upload || !upload.data.length) return json(res, 400, { error: "请选择要上传的个人文件" });
+      const usedBytes = userStorageUsage(db, user.id);
+      if (usedBytes + upload.data.length > USER_STORAGE_QUOTA_BYTES) {
+        return json(res, 413, { error: "个人空间不足，每个账号最多 500MB" });
+      }
+      const originalName = safeName(upload.filename);
+      const targetDir = userStorageDir(user.id);
+      ensureDir(targetDir);
+      const storedName = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${originalName}`;
+      const diskPath = path.join(targetDir, storedName);
+      fs.writeFileSync(diskPath, upload.data);
+      const record = {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        account: user.account,
+        title: String(path.parse(originalName).name || originalName).trim().slice(0, 80),
+        originalName,
+        storedName,
+        diskPath,
+        size: upload.data.length,
+        contentType: upload.type || "application/octet-stream",
+        md5: crypto.createHash("md5").update(upload.data).digest("hex"),
+        createdAt: new Date().toISOString()
+      };
+      getUserFileStore(db).push(record);
+      appendOperationLog(db, user, "上传个人文件", user.account, originalName);
+      saveDb(db);
+      return json(res, 201, { file: publicUserFile(record), storage: userStoragePayload(db, user) });
+    }
+
+    if (method === "GET" && url.pathname.startsWith("/api/profile/files/") && url.pathname.endsWith("/download")) {
+      const user = requireUser(req, res, db);
+      if (!user) return;
+      if (blocksBeforePasswordChange(req, res, user)) return;
+      const id = url.pathname.split("/")[3];
+      const file = getUserFileStore(db).find((item) => item.id === id);
+      if (!file || file.userId !== user.id) return json(res, 404, { error: "个人文件不存在" });
+      if (!fs.existsSync(file.diskPath)) return json(res, 404, { error: "个人文件已不在磁盘上" });
+      const stat = fs.statSync(file.diskPath);
+      if (!stat.isFile()) return json(res, 404, { error: "个人文件无效" });
+      const encoded = encodeURIComponent(file.originalName);
+      res.writeHead(200, {
+        ...securityHeaders(),
+        "Content-Type": file.contentType || "application/octet-stream",
+        "Content-Length": stat.size,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encoded}`
+      });
+      return streamDownload(res, file.diskPath);
+    }
+
+    if (method === "DELETE" && url.pathname.startsWith("/api/profile/files/")) {
+      const user = requireUser(req, res, db);
+      if (!user) return;
+      if (blocksBeforePasswordChange(req, res, user)) return;
+      const id = url.pathname.split("/").pop();
+      const file = getUserFileStore(db).find((item) => item.id === id);
+      if (!file || file.userId !== user.id) return json(res, 404, { error: "个人文件不存在" });
+      const diskDelete = deleteUserStorageFile(file);
+      db.userFiles = getUserFileStore(db).filter((item) => item.id !== id);
+      appendOperationLog(db, user, "删除个人文件", user.account, `${file.originalName} / ${diskDelete.deleted ? "已删除磁盘文件" : "磁盘文件不存在"}`);
+      saveDb(db);
+      return json(res, 200, { ok: true, storage: userStoragePayload(db, user) });
+    }
+
     if (method === "POST" && url.pathname === "/api/users") {
       const creator = requireRole(req, res, db, ["teacher", "admin"]);
       if (!creator) return;
@@ -1481,6 +1629,7 @@ async function handleApi(req, res) {
       const target = db.users.find((user) => user.id === id);
       if (!target) return json(res, 404, { error: "账号不存在" });
       if (target.account === "superadmin") return json(res, 400, { error: "超级管理员账号不能删除" });
+      deleteUserStorageForUser(db, id);
       db.users = db.users.filter((user) => user.id !== id);
       for (const [sid, session] of Object.entries(runtimeSessions)) {
         if (session.userId === id) delete runtimeSessions[sid];
