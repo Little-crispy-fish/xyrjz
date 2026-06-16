@@ -33,6 +33,7 @@ const state = {
   notices: [],
   feedback: [],
   downloadLogs: [],
+  userFiles: [],
   users: [],
   majors: {},
   classes: [],
@@ -156,6 +157,7 @@ function normalizeData(data = {}) {
   state.notices = Array.isArray(data.notices) ? data.notices : [];
   state.feedback = Array.isArray(data.feedback) ? data.feedback : [];
   state.downloadLogs = Array.isArray(data.downloadLogs) ? data.downloadLogs : [];
+  state.userFiles = Array.isArray(data.userFiles) ? data.userFiles : [];
   state.users = Array.isArray(data.users) ? data.users : [];
   state.majors = data.majors || {};
   state.classes = Array.isArray(data.classes) ? data.classes : [];
@@ -508,6 +510,60 @@ function renderFeedbackItem(item) {
   return `<article class="notice-row"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.content)}</span><small>${escapeHtml(item.status || '待处理')} ${item.reply ? ` · 回复：${escapeHtml(item.reply)}` : ''}</small></article>`;
 }
 
+function storagePercent(storage = {}) {
+  const quota = Number(storage.quotaBytes || 0);
+  if (!quota) return 0;
+  return Math.max(0, Math.min(100, Math.round((Number(storage.usedBytes || 0) / quota) * 100)));
+}
+
+function renderUserFileRow(file) {
+  return `
+    <article class="personal-file-row">
+      <div>
+        <strong>${escapeHtml(file.originalName || file.title || '个人文件')}</strong>
+        <span>${formatSize(file.size)} · ${formatDate(file.createdAt)}</span>
+      </div>
+      <div class="row-actions">
+        <a class="button small" href="${escapeHtml(file.downloadUrl || `/api/profile/files/${file.id}/download`)}">下载</a>
+        <button type="button" class="danger small" data-delete-user-file="${escapeHtml(file.id)}">删除</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderPersonalStorage() {
+  const storage = state.storage?.user || {};
+  const quota = Number(storage.quotaBytes || 500 * 1024 * 1024);
+  const used = Number(storage.usedBytes || 0);
+  const remaining = Math.max(0, Number(storage.remainingBytes ?? (quota - used)));
+  const percent = storagePercent({ quotaBytes: quota, usedBytes: used });
+  return `
+    <section class="panel wide personal-storage-panel">
+      <div class="panel-title-row">
+        <div>
+          <h2>个人空间</h2>
+          <p class="muted">每个账号独立分配 ${formatSize(quota)} 私有空间，只能查看、下载和删除自己的文件。</p>
+        </div>
+        <span class="tag">${percent}% 已用</span>
+      </div>
+      <div class="storage-meter">
+        <div class="progress"><div class="progress-bar" style="width:${percent}%"></div><span>${formatSize(used)} / ${formatSize(quota)}</span></div>
+        <div class="storage-summary">
+          <span>已用：${formatSize(used)}</span>
+          <span>剩余：${formatSize(remaining)}</span>
+        </div>
+      </div>
+      <form class="form personal-storage-upload" id="personalFileForm">
+        <label>上传到我的个人空间<input name="file" type="file" required></label>
+        <button type="submit">上传文件</button>
+      </form>
+      <div class="personal-file-list">
+        ${(state.userFiles || []).map(renderUserFileRow).join('') || `<p class="muted">个人空间暂无文件。</p>`}
+      </div>
+    </section>
+  `;
+}
+
 function renderProfile() {
   const avatar = state.user?.avatar || '';
   return `
@@ -533,6 +589,7 @@ function renderProfile() {
         <p class="muted">${PASSWORD_RULE_TEXT}</p>
         <button type="submit">修改密码</button>
       </form>
+      ${renderPersonalStorage()}
       <div class="panel wide"><h2>下载记录</h2>${state.downloadLogs.map((log) => `<article class="rank-row"><strong>下</strong><div><b>${escapeHtml(log.fileTitle || log.originalName || '资源')}</b><span>${formatDate(log.createdAt)}</span></div></article>`).join('') || `<p class="muted">暂无下载记录</p>`}</div>
     </section>
   `;
@@ -1083,6 +1140,17 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  const deleteUserFile = event.target.closest('[data-delete-user-file]');
+  if (deleteUserFile) {
+    if (!confirm('确定删除这个个人文件吗？')) return;
+    await api(`/api/profile/files/${deleteUserFile.dataset.deleteUserFile}`, { method: 'DELETE' });
+    state.message = '个人文件已删除';
+    await bootstrap();
+    state.tab = 'profile';
+    render();
+    return;
+  }
+
   const deleteCategory = event.target.closest('[data-delete-category]');
   if (deleteCategory) {
     if (!confirm('确定删除这个分类吗？')) return;
@@ -1170,6 +1238,19 @@ document.addEventListener('submit', async (event) => {
       const data = new FormData(form);
       await api('/api/profile/avatar', { method: 'POST', body: data });
       state.message = '头像已上传';
+      await bootstrap();
+      state.tab = 'profile';
+      render();
+      return;
+    }
+
+    if (form.id === 'personalFileForm') {
+      event.preventDefault();
+      const input = form.querySelector('input[type="file"]');
+      if (!input?.files?.length) throw new Error('请选择要上传的个人文件');
+      const data = new FormData(form);
+      await api('/api/profile/files', { method: 'POST', body: data });
+      state.message = '个人文件已上传';
       await bootstrap();
       state.tab = 'profile';
       render();

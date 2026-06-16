@@ -1536,7 +1536,7 @@ async function handleApi(req, res) {
       const user = requireUser(req, res, db);
       if (!user) return;
       if (blocksBeforePasswordChange(req, res, user)) return;
-      const id = url.pathname.split("/")[3];
+      const id = url.pathname.split("/")[4];
       const file = getUserFileStore(db).find((item) => item.id === id);
       if (!file || file.userId !== user.id) return json(res, 404, { error: "个人文件不存在" });
       if (!fs.existsSync(file.diskPath)) return json(res, 404, { error: "个人文件已不在磁盘上" });
